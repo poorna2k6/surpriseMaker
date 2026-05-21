@@ -89,9 +89,9 @@ const DEMO_GENERATED = {
   short:
     'From the very first moment, you made the ordinary feel extraordinary. Every day with you is my favourite day.',
   medium:
-    'There are five years worth of moments in this album, and yet none of them do justice to what I feel for you. You've been my adventure, my comfort, my home. Watching you laugh, seeing you grow, sharing every quiet Tuesday — that's the love story I'll never stop wanting to tell.',
+    "There are five years worth of moments in this album, and yet none of them do justice to what I feel for you. You've been my adventure, my comfort, my home. Watching you laugh, seeing you grow, sharing every quiet Tuesday — that's the love story I'll never stop wanting to tell.",
   letter:
-    'My love,\n\nFive years ago I stood across from you and made a promise. I didn't fully understand then how much that promise would shape me. Every year since, I have watched you become more yourself — braver, kinder, more dazzling than I thought possible.\n\nYou have been with me through every storm and every sunrise. You have held my hand in hospitals, danced with me in parking lots, and talked me out of my worst ideas — and into my best ones.\n\nI love you not just for who you are, but for who I become when I'm with you.\n\nAlways yours.',
+    "My love,\n\nFive years ago I stood across from you and made a promise. I didn't fully understand then how much that promise would shape me. Every year since, I have watched you become more yourself — braver, kinder, more dazzling than I thought possible.\n\nYou have been with me through every storm and every sunrise. You have held my hand in hospitals, danced with me in parking lots, and talked me out of my worst ideas — and into my best ones.\n\nI love you not just for who you are, but for who I become when I'm with you.\n\nAlways yours.",
   narration:
     'The year was 2019. Two people stood at the edge of a new life, ready to jump — together. What follows is a love story told in photographs: ordinary moments that turned out to be anything but ordinary. Each image is a heartbeat. Each chapter, a year of choosing each other. This is our story.',
 };
