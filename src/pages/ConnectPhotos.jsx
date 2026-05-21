@@ -1,502 +1,601 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  CheckCircle2,
-  CloudUpload,
-  Images,
-  PlusCircle,
-  Tag,
-  Sparkles,
-  ChevronRight,
-  Check,
-  Image,
+  CheckCircle2, CloudUpload, Images, ChevronRight,
+  Check, LogOut, RefreshCw, AlertCircle, User, FolderOpen,
 } from 'lucide-react';
 import useStore from '../store/useStore';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Google OAuth config ──────────────────────────────────────────────────────
+// GOOGLE OAUTH: sign in and consent flow here
+const GOOGLE_CLIENT_ID = '836889327596-cda7k0kcq1jdvp57h92hjlsdme674vu9.apps.googleusercontent.com';
+const PHOTOS_SCOPE = 'https://www.googleapis.com/auth/photoslibrary.readonly';
 
-const MOCK_ALBUMS = [
-  { id: 'a1', title: 'Our Wedding',           count: 248, source: 'My Photos',    gradient: 'from-pink-700 to-rose-900'     },
-  { id: 'a2', title: 'Honeymoon Bali 2019',   count: 156, source: 'My Photos',    gradient: 'from-violet-700 to-purple-900' },
-  { id: 'a3', title: 'Family Christmas 2021', count: 89,  source: 'Shared Album', gradient: 'from-sky-700 to-indigo-900'   },
-  { id: 'a4', title: 'Anniversary Trip 2022', count: 67,  source: 'My Photos',    gradient: 'from-amber-700 to-orange-900' },
-  { id: 'a5', title: 'Random Moments',        count: 423, source: 'My Photos',    gradient: 'from-teal-700 to-cyan-900'    },
-  { id: 'a6', title: 'Couple Selfies',        count: 112, source: 'My Photos',    gradient: 'from-fuchsia-700 to-pink-900' },
-];
-
-const ALL_TAGS = ['spouse', 'me', 'couple', 'family', 'anniversary', 'trip', 'favorite'];
-
-const PHOTO_GRADIENTS = [
-  'from-pink-800 to-rose-900',
-  'from-violet-800 to-purple-900',
-  'from-sky-800 to-indigo-900',
-  'from-amber-800 to-orange-900',
-  'from-teal-800 to-cyan-900',
-  'from-fuchsia-800 to-pink-900',
-  'from-emerald-800 to-teal-900',
-  'from-red-800 to-rose-900',
-  'from-indigo-800 to-violet-900',
-  'from-yellow-800 to-amber-900',
-  'from-cyan-800 to-sky-900',
-  'from-lime-800 to-green-900',
-];
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SourceChip({ label }) {
-  const cls =
-    label === 'My Photos'
-      ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-      : label === 'Shared Album'
-      ? 'bg-pink-500/20 text-pink-300 border-pink-500/30'
-      : 'bg-sky-500/20 text-sky-300 border-sky-500/30';
-  return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${cls}`}>
-      {label}
-    </span>
+// ─── Google Photos API helpers ────────────────────────────────────────────────
+// GOOGLE PHOTOS ALBUM FETCH: load albums here
+async function apiFetchAlbums(token) {
+  const res = await fetch(
+    'https://photoslibrary.googleapis.com/v1/albums?pageSize=50',
+    { headers: { Authorization: `Bearer ${token}` } }
   );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw Object.assign(
+      new Error(err?.error?.message || `HTTP ${res.status}`),
+      { status: res.status }
+    );
+  }
+  const data = await res.json();
+  return data.albums || [];
 }
 
-function TagChip({ tag, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-[10px] px-2 py-0.5 rounded-full border transition-all duration-150 cursor-pointer ${
-        active
-          ? 'bg-pink-500/30 text-pink-200 border-pink-400/50'
-          : 'bg-white/5 text-purple-400 border-purple-700/40 hover:bg-white/10 hover:text-purple-300'
-      }`}
-    >
-      {tag}
-    </button>
+// SHARED ALBUM IMPORT: integrate shared source picker here
+async function apiFetchSharedAlbums(token) {
+  const res = await fetch(
+    'https://photoslibrary.googleapis.com/v1/sharedAlbums?pageSize=50',
+    { headers: { Authorization: `Bearer ${token}` } }
   );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.sharedAlbums || [];
 }
 
-function DropZone({ fileCount, onFilesSelected }) {
-  const [isDragging, setIsDragging] = useState(false);
+// GOOGLE PHOTOS PICKER API: launch picker here
+async function apiFetchAlbumMedia(token, albumId, pageSize = 100) {
+  const res = await fetch(
+    'https://photoslibrary.googleapis.com/v1/mediaItems:search',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ albumId, pageSize }),
+    }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.mediaItems || [];
+}
 
-  const handleDrag = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(e.type === 'dragenter' || e.type === 'dragover');
+async function apiGetUserInfo(token) {
+  const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// ─── useGoogleAuth hook ───────────────────────────────────────────────────────
+function useGoogleAuth() {
+  const [gisReady, setGisReady] = useState(!!window.google?.accounts?.oauth2);
+  const [accessToken, setAccessToken] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (window.google?.accounts?.oauth2) { setGisReady(true); return; }
+    const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (existing) {
+      existing.addEventListener('load', () => setGisReady(true));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.defer = true;
+    s.onload = () => setGisReady(true);
+    s.onerror = () => setError('Could not load Google Sign-In. Check your connection and try refreshing.');
+    document.head.appendChild(s);
   }, []);
 
-  const handleDrop = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-      const files = Array.from(e.dataTransfer?.files ?? []).filter(
-        (f) => f.type.startsWith('image/') || f.type.startsWith('video/')
-      );
-      if (files.length) onFilesSelected(files.length);
-    },
-    [onFilesSelected]
-  );
+  const signIn = useCallback(() => {
+    if (!window.google?.accounts?.oauth2) {
+      setError('Google Sign-In not ready yet. Please wait a moment and try again.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
 
-  const handleInput = useCallback(
-    (e) => {
-      const files = Array.from(e.target.files ?? []);
-      if (files.length) onFilesSelected(files.length);
-    },
-    [onFilesSelected]
-  );
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: `${PHOTOS_SCOPE} openid email profile`,
+      callback: async (response) => {
+        if (response.error) {
+          setError(
+            response.error === 'access_denied'
+              ? 'Access denied. Make sure your Google account is added as a Test User in Google Cloud Console → OAuth consent screen → Test users.'
+              : `Sign-in failed: ${response.error}`
+          );
+          setLoading(false);
+          return;
+        }
+        setAccessToken(response.access_token);
+        const info = await apiGetUserInfo(response.access_token).catch(() => null);
+        setUserInfo(info);
+        setLoading(false);
+      },
+      error_callback: (err) => {
+        if (err.type !== 'popup_closed') {
+          setError(`Sign-in error: ${err.type}`);
+        }
+        setLoading(false);
+      },
+    });
+
+    client.requestToken();
+  }, [gisReady]);
+
+  const signOut = useCallback(() => {
+    if (accessToken) window.google?.accounts?.oauth2?.revoke(accessToken, () => {});
+    setAccessToken(null);
+    setUserInfo(null);
+  }, [accessToken]);
+
+  return { gisReady, accessToken, userInfo, loading, error, signIn, signOut };
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PHOTO_GRADIENTS = [
+  'from-pink-800 to-rose-900', 'from-violet-800 to-purple-900',
+  'from-sky-800 to-indigo-900', 'from-amber-800 to-orange-900',
+  'from-teal-800 to-cyan-900', 'from-fuchsia-800 to-pink-900',
+  'from-emerald-800 to-teal-900', 'from-indigo-800 to-violet-900',
+];
+
+// ─── AlbumCard ────────────────────────────────────────────────────────────────
+function AlbumCard({ album, selected, onToggle }) {
+  const gradient = PHOTO_GRADIENTS[
+    Math.abs((album.id.charCodeAt(0) || 0) + (album.id.charCodeAt(2) || 0)) % PHOTO_GRADIENTS.length
+  ];
+  const coverUrl = album.coverPhotoBaseUrl
+    ? `${album.coverPhotoBaseUrl}=w300-h200-c`
+    : null;
 
   return (
-    <label
-      onDragEnter={handleDrag}
-      onDragOver={handleDrag}
-      onDragLeave={handleDrag}
-      onDrop={handleDrop}
-      className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer transition-all duration-200 ${
-        isDragging
-          ? 'border-pink-400/70 bg-pink-500/10'
-          : 'border-purple-600/40 hover:border-purple-500/60 hover:bg-purple-500/5'
-      }`}
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.97 }}
+      onClick={onToggle}
+      className="cursor-pointer rounded-2xl overflow-hidden border-2 transition-colors duration-200"
+      style={{ borderColor: selected ? 'rgba(244,114,182,0.7)' : 'rgba(168,85,247,0.12)' }}
     >
-      <input type="file" accept="image/*,video/*" multiple className="sr-only" onChange={handleInput} />
-      <motion.div
-        animate={isDragging ? { scale: 1.15 } : { scale: 1 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-      >
-        <CloudUpload size={40} className={isDragging ? 'text-pink-400' : 'text-purple-500'} />
-      </motion.div>
-      <div className="text-center">
-        <p className="text-purple-200 font-medium text-sm">
-          {fileCount > 0
-            ? `${fileCount} file${fileCount > 1 ? 's' : ''} selected`
-            : 'Drop photos or videos here'}
-        </p>
-        <p className="text-purple-500 text-xs mt-1">or click to select files</p>
+      {/* Thumbnail */}
+      <div className={`h-28 bg-gradient-to-br ${gradient} relative`}>
+        {coverUrl && (
+          <img
+            src={coverUrl}
+            alt={album.title}
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={e => { e.currentTarget.style.display = 'none'; }}
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        <AnimatePresence>
+          {selected && (
+            <motion.div
+              initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-pink-500 flex items-center justify-center shadow-lg"
+            >
+              <Check size={14} className="text-white" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      {fileCount > 0 && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="flex items-center gap-1.5 bg-green-500/20 text-green-300 border border-green-500/30 rounded-full px-3 py-1 text-xs font-medium"
-        >
-          <Check size={12} />
-          {fileCount} file{fileCount > 1 ? 's' : ''} ready to import
-        </motion.div>
-      )}
-    </label>
+
+      {/* Info */}
+      <div className="p-3 bg-[#1a0a2e]">
+        <p className="text-purple-100 text-sm font-medium truncate mb-1">{album.title}</p>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+            album._source === 'Shared Album'
+              ? 'bg-pink-900/60 text-pink-300 border-pink-700/40'
+              : 'bg-violet-900/60 text-violet-300 border-violet-700/40'
+          }`}>
+            {album._source || 'My Photos'}
+          </span>
+          <span className="text-purple-500 text-[11px]">
+            {album.mediaItemsCount ?? '?'} items
+          </span>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function ConnectPhotos() {
   const navigate = useNavigate();
-  const { addConnectedAccount, setSelectedAlbums, addMediaItems } = useStore();
+  const addConnectedAccount = useStore(s => s.addConnectedAccount);
+  const setSelectedAlbums = useStore(s => s.setSelectedAlbums);
+  const addMediaItems = useStore(s => s.addMediaItems);
 
-  const [isConnected, setIsConnected]         = useState(false);
-  const [isConnecting, setIsConnecting]       = useState(false);
-  const [selectedAlbumIds, setSelectedAlbumIds] = useState(new Set());
-  const [isImported, setIsImported]           = useState(false);
-  const [isImporting, setIsImporting]         = useState(false);
-  const [uploadedCount, setUploadedCount]     = useState(0);
-  const [photoTags, setPhotoTags]             = useState({});
-  const [isAutoTagging, setIsAutoTagging]     = useState(false);
+  const { gisReady, accessToken, userInfo, loading: authLoading, error: authError, signIn, signOut } = useGoogleAuth();
 
-  // ── Connect (demo) ──────────────────────────────────────────────────────────
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    // GOOGLE OAUTH: sign in and consent flow here
-    await new Promise((r) => setTimeout(r, 1400));
-    addConnectedAccount({
-      id: 'demo',
-      email: 'demo@gmail.com',
-      name: 'Demo User',
-      avatarUrl: null,
-      connected: true,
-    });
-    setIsConnected(true);
-    setIsConnecting(false);
+  const [albums, setAlbums] = useState([]);
+  const [albumsLoading, setAlbumsLoading] = useState(false);
+  const [albumsError, setAlbumsError] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [importing, setImporting] = useState(false);
+  const [importDone, setImportDone] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadedCount, setUploadedCount] = useState(0);
+
+  // Load albums once authenticated
+  useEffect(() => {
+    if (!accessToken) return;
+    setAlbumsLoading(true);
+    setAlbumsError(null);
+
+    Promise.all([
+      apiFetchAlbums(accessToken).catch(err => { throw err; }),
+      apiFetchSharedAlbums(accessToken).catch(() => []),
+    ])
+      .then(([mine, shared]) => {
+        const all = [
+          ...mine.map(a => ({ ...a, _source: 'My Photos' })),
+          ...shared.map(a => ({ ...a, _source: 'Shared Album' })),
+        ];
+        setAlbums(all);
+        addConnectedAccount({
+          id: userInfo?.sub || 'google-user',
+          email: userInfo?.email || '',
+          name: userInfo?.name || 'Google Account',
+          avatarUrl: userInfo?.picture || null,
+          connected: true,
+        });
+      })
+      .catch(err => setAlbumsError(err.message))
+      .finally(() => setAlbumsLoading(false));
+  }, [accessToken]);
+
+  const reloadAlbums = () => {
+    if (!accessToken) return;
+    setAlbumsLoading(true);
+    setAlbumsError(null);
+    Promise.all([apiFetchAlbums(accessToken), apiFetchSharedAlbums(accessToken)])
+      .then(([m, s]) => setAlbums([
+        ...m.map(a => ({ ...a, _source: 'My Photos' })),
+        ...s.map(a => ({ ...a, _source: 'Shared Album' })),
+      ]))
+      .catch(err => setAlbumsError(err.message))
+      .finally(() => setAlbumsLoading(false));
   };
 
-  // ── Album toggle ────────────────────────────────────────────────────────────
-  const toggleAlbum = (id) => {
-    setSelectedAlbumIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  const toggleAlbum = id => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
-  // ── Import ──────────────────────────────────────────────────────────────────
   const handleImport = async () => {
-    if (selectedAlbumIds.size === 0) return;
-    setIsImporting(true);
-    // GOOGLE PHOTOS ALBUM FETCH: load albums here
-    const selected = MOCK_ALBUMS.filter((a) => selectedAlbumIds.has(a.id));
-    setSelectedAlbums(selected);
-    await new Promise((r) => setTimeout(r, 1800));
-    const mockItems = Array.from({ length: 12 }, (_, i) => ({
-      id: `photo-${i}`,
-      albumId: selected[0]?.id ?? 'a1',
-      type: 'image',
-      url: null,
-      thumbnailUrl: null,
-      date: new Date(2019 + Math.floor(i / 2), i % 12, (i % 28) + 1),
-    }));
-    addMediaItems(mockItems);
-    setIsImporting(false);
-    setIsImported(true);
-  };
+    if (!selectedIds.size) return;
+    setImporting(true);
+    const chosen = albums.filter(a => selectedIds.has(a.id));
+    setSelectedAlbums(chosen);
 
-  // ── Tag toggle ──────────────────────────────────────────────────────────────
-  const toggleTag = (photoId, tag) => {
-    setPhotoTags((prev) => {
-      const current = new Set(prev[photoId] ?? []);
-      current.has(tag) ? current.delete(tag) : current.add(tag);
-      return { ...prev, [photoId]: current };
-    });
-  };
-
-  // ── Auto-tag (demo) ─────────────────────────────────────────────────────────
-  const handleAutoTag = async () => {
-    setIsAutoTagging(true);
-    // FACE GROUP ASSIST: integrate people grouping if available here
-    await new Promise((r) => setTimeout(r, 2000));
-    const suggested = {};
-    for (let i = 0; i < 12; i++) {
-      suggested[`photo-${i}`] = new Set(ALL_TAGS.slice(0, 2 + (i % 3)));
+    const allItems = [];
+    for (const album of chosen) {
+      const items = await apiFetchAlbumMedia(accessToken, album.id).catch(() => []);
+      items.forEach(item => allItems.push({
+        id: item.id,
+        url: item.baseUrl ? `${item.baseUrl}=w1200` : null,
+        thumbnailUrl: item.baseUrl ? `${item.baseUrl}=w300-h300-c` : null,
+        type: item.mimeType?.startsWith('video') ? 'video' : 'photo',
+        dateTaken: item.mediaMetadata?.creationTime || null,
+        sourceAlbum: album.id,
+        sourceLabel: album._source,
+        filename: item.filename,
+        tags: [],
+        status: 'optional',
+      }));
     }
-    setPhotoTags(suggested);
-    setIsAutoTagging(false);
+    addMediaItems(allItems);
+    setImporting(false);
+    setImportDone(true);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // Drag & drop
+  const handleDrop = useCallback(e => {
+    e.preventDefault();
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.type.startsWith('image/') || f.type.startsWith('video/')
+    );
+    if (!files.length) return;
+    const items = files.map((f, i) => ({
+      id: `local-${Date.now()}-${i}`,
+      url: URL.createObjectURL(f),
+      thumbnailUrl: URL.createObjectURL(f),
+      type: f.type.startsWith('video') ? 'video' : 'photo',
+      dateTaken: null,
+      sourceAlbum: 'local-upload',
+      sourceLabel: 'Uploaded',
+      filename: f.name,
+      tags: [],
+      status: 'optional',
+    }));
+    addMediaItems(items);
+    setUploadedCount(c => c + items.length);
+  }, [addMediaItems]);
+
+  const handleFileInput = e => {
+    const files = Array.from(e.target.files || []).filter(
+      f => f.type.startsWith('image/') || f.type.startsWith('video/')
+    );
+    if (!files.length) return;
+    const items = files.map((f, i) => ({
+      id: `local-${Date.now()}-${i}`,
+      url: URL.createObjectURL(f),
+      thumbnailUrl: URL.createObjectURL(f),
+      type: f.type.startsWith('video') ? 'video' : 'photo',
+      dateTaken: null,
+      sourceAlbum: 'local-upload',
+      sourceLabel: 'Uploaded',
+      filename: f.name,
+      tags: [],
+      status: 'optional',
+    }));
+    addMediaItems(items);
+    setUploadedCount(c => c + items.length);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0d0618] px-4 pb-28 pt-8">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="min-h-dvh bg-[#0d0618] p-4 md:p-8 safe-bottom-nav">
+      <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center space-y-2"
-        >
-          <h1 className="font-display text-4xl font-semibold gradient-text">Connect Your Photos</h1>
-          <p className="text-purple-300 text-sm">
-            Select albums from Google Photos to import memories
-          </p>
-          <p className="text-purple-500 text-xs flex items-center justify-center gap-1.5">
-            <CheckCircle2 size={12} className="text-green-400 flex-shrink-0" />
-            Only albums you select will be accessed. Your photos never leave your browser session.
+        <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="font-display text-3xl md:text-4xl gradient-text font-semibold mb-1">
+            Connect Your Photos
+          </h1>
+          <p className="text-purple-400 text-sm">
+            Sign in with Google to browse your albums — only what you choose is imported.
           </p>
         </motion.div>
 
-        {/* ── Section 1: Connect Account ──────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card padding="lg">
-            <AnimatePresence mode="wait">
-              {isConnected ? (
-                <motion.div
-                  key="connected"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex flex-col sm:flex-row items-center gap-4"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <CheckCircle2 size={20} className="text-green-400" />
-                    </div>
-                    <div>
-                      <p className="text-purple-100 font-medium text-sm">Connected as demo@gmail.com</p>
-                      <p className="text-purple-400 text-xs">Google Photos access granted</p>
-                    </div>
+        {/* ── Google Auth Card ─────────────────────────────────────────────── */}
+        <Card>
+          <div className="p-5">
+            {!accessToken ? (
+              <div className="flex flex-col items-center text-center gap-5">
+                {/* Google logo */}
+                <div className="w-16 h-16 rounded-2xl bg-white/8 border border-purple-800/30 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" width="32" height="32">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                </div>
+
+                <div>
+                  <h3 className="text-purple-100 font-semibold text-lg mb-1">Connect Google Photos</h3>
+                  <p className="text-purple-400 text-sm max-w-xs mx-auto leading-relaxed">
+                    Sign in to browse your albums and select the memories that matter most.
+                  </p>
+                </div>
+
+                {authError && (
+                  <div className="w-full flex items-start gap-3 p-3 rounded-xl bg-red-900/30 border border-red-700/40 text-left">
+                    <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-red-300 text-sm leading-relaxed">{authError}</p>
                   </div>
-                  <Button variant="ghost" size="sm" icon={PlusCircle} onClick={() => {}}>
-                    Add Another Account
-                  </Button>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="disconnected"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex flex-col items-center gap-5 py-2"
+                )}
+
+                <button
+                  onClick={signIn}
+                  disabled={!gisReady || authLoading}
+                  className="flex items-center gap-3 px-6 py-3 rounded-xl bg-white text-gray-800 font-semibold text-sm hover:bg-gray-100 active:bg-gray-200 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {/* Google logo */}
-                  <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg">
-                    <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                  {authLoading ? (
+                    <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" strokeOpacity="0.2"/>
+                      <path d="M12 2a10 10 0 0 1 10 10"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="18" height="18">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                     </svg>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-purple-100 font-medium">Sign in to Google Photos</p>
-                    <p className="text-purple-400 text-xs">Browse your albums and shared photos</p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    loading={isConnecting}
-                    onClick={handleConnect}
-                  >
-                    {isConnecting ? 'Connecting…' : 'Connect Google Photos'}
-                  </Button>
-                  <p className="text-purple-600 text-[11px] italic">Demo mode — no real OAuth required</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Card>
-        </motion.div>
+                  )}
+                  {authLoading ? 'Signing in…' : 'Sign in with Google'}
+                </button>
 
-        {/* ── Section 2: Manual Upload ─────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h2 className="text-purple-400 text-xs font-semibold uppercase tracking-widest mb-3">
-            Or upload photos directly
-          </h2>
-          <DropZone fileCount={uploadedCount} onFilesSelected={setUploadedCount} />
-        </motion.div>
+                <p className="text-purple-600 text-xs">
+                  Only selected photos are used &nbsp;·&nbsp; Nothing stored on any server
+                </p>
+              </div>
+            ) : (
+              /* Connected */
+              <div className="flex items-center gap-4">
+                {userInfo?.picture
+                  ? <img src={userInfo.picture} alt={userInfo.name} className="w-12 h-12 rounded-full ring-2 ring-purple-500/50" />
+                  : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"><User size={22} className="text-white" /></div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <CheckCircle2 size={15} className="text-green-400 flex-shrink-0" />
+                    <span className="text-purple-100 font-semibold text-sm truncate">{userInfo?.name || 'Google Account'}</span>
+                  </div>
+                  <p className="text-purple-400 text-xs truncate">{userInfo?.email}</p>
+                </div>
+                <button
+                  onClick={signOut}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass-light text-purple-400 hover:text-purple-200 text-xs transition-colors"
+                >
+                  <LogOut size={13} /> Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        </Card>
 
-        {/* ── Section 3: Album Selection ───────────────────────────────────────── */}
+        {/* ── Albums ───────────────────────────────────────────────────────── */}
         <AnimatePresence>
-          {isConnected && (
-            <motion.div
-              key="albums"
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 16 }}
-              transition={{ duration: 0.4 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="text-purple-200 font-semibold flex items-center gap-2">
-                  <Images size={18} className="text-purple-400" />
-                  Your Albums
-                  <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">
-                    {MOCK_ALBUMS.length}
-                  </span>
-                </h2>
-                {selectedAlbumIds.size > 0 && (
-                  <span className="text-xs text-pink-300 font-medium">
-                    {selectedAlbumIds.size} selected
-                  </span>
+          {accessToken && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <FolderOpen size={17} className="text-purple-400" />
+                  <h2 className="text-purple-100 font-semibold text-sm">
+                    {albumsLoading ? 'Loading your albums…' : `${albums.length} Albums found`}
+                  </h2>
+                </div>
+                {!albumsLoading && (
+                  <button
+                    onClick={reloadAlbums}
+                    className="flex items-center gap-1 text-purple-400 hover:text-purple-200 text-xs transition-colors"
+                  >
+                    <RefreshCw size={11} /> Refresh
+                  </button>
                 )}
               </div>
 
-              {/* Album grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {MOCK_ALBUMS.map((album, idx) => {
-                  const isSelected = selectedAlbumIds.has(album.id);
-                  return (
-                    <motion.button
-                      key={album.id}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: idx * 0.06 }}
-                      onClick={() => toggleAlbum(album.id)}
-                      className={`relative rounded-2xl overflow-hidden text-left cursor-pointer transition-all duration-200 border-2 ${
-                        isSelected
-                          ? 'border-pink-400 glow-rose'
-                          : 'border-transparent hover:border-purple-500/50'
-                      }`}
-                    >
-                      {/* Thumbnail */}
-                      <div className={`h-28 bg-gradient-to-br ${album.gradient} relative`}>
-                        <div className="absolute inset-0 bg-black/20" />
-                        <Image size={28} className="absolute bottom-2 right-2 text-white/25" />
-                        <AnimatePresence>
-                          {isSelected && (
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              className="absolute inset-0 bg-pink-500/25 flex items-center justify-center"
-                            >
-                              <div className="w-7 h-7 rounded-full bg-pink-500 flex items-center justify-center shadow-lg">
-                                <Check size={14} className="text-white" />
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+              {/* Loading skeletons */}
+              {albumsLoading && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="rounded-2xl overflow-hidden">
+                      <div className="h-28 skeleton" />
+                      <div className="p-3 bg-[#1a0a2e] space-y-2">
+                        <div className="h-3 skeleton rounded-full w-3/4" />
+                        <div className="h-2 skeleton rounded-full w-1/2" />
                       </div>
-                      {/* Info */}
-                      <div className="glass p-2.5 space-y-1.5">
-                        <p className="text-purple-100 text-xs font-semibold leading-tight line-clamp-1">
-                          {album.title}
-                        </p>
-                        <div className="flex items-center justify-between gap-1 flex-wrap">
-                          <span className="text-purple-400 text-[10px]">{album.count} photos</span>
-                          <SourceChip label={album.source} />
-                        </div>
-                      </div>
-                    </motion.button>
-                  );
-                })}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Import CTA */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-                <p className="text-purple-400 text-sm">
-                  {selectedAlbumIds.size === 0
-                    ? 'Tap albums to select them'
-                    : `Selected: ${selectedAlbumIds.size} album${selectedAlbumIds.size > 1 ? 's' : ''}`}
-                </p>
-                <Button
-                  variant="primary"
-                  size="md"
-                  icon={ChevronRight}
-                  iconPosition="right"
-                  disabled={selectedAlbumIds.size === 0}
-                  loading={isImporting}
-                  onClick={handleImport}
-                >
-                  {isImporting ? 'Importing…' : 'Import Selected Albums'}
-                </Button>
-              </div>
+              {/* Error */}
+              {albumsError && (
+                <div className="p-4 rounded-2xl bg-red-900/20 border border-red-700/30 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="text-red-400" />
+                    <p className="text-red-300 text-sm font-semibold">Could not load albums</p>
+                  </div>
+                  <p className="text-red-400/80 text-xs font-mono">{albumsError}</p>
+                  <div className="mt-2 p-3 bg-purple-900/20 rounded-xl">
+                    <p className="text-purple-300 text-xs font-semibold mb-1">Troubleshooting</p>
+                    <ul className="text-purple-400 text-xs space-y-1 list-disc list-inside">
+                      <li>Ensure <strong>Google Photos Library API</strong> is enabled in Google Cloud Console</li>
+                      <li>Your Google account must be added as a <strong>Test user</strong> under OAuth consent screen</li>
+                      <li>New Google Cloud projects (post-2024) may need a billing account for Photos API access</li>
+                    </ul>
+                  </div>
+                  <p className="text-purple-500 text-xs">You can still use the manual upload below.</p>
+                </div>
+              )}
+
+              {/* Empty */}
+              {!albumsLoading && !albumsError && albums.length === 0 && (
+                <div className="text-center py-10">
+                  <Images size={32} className="mx-auto mb-2 text-purple-700" />
+                  <p className="text-purple-500 text-sm">No albums found in this Google account.</p>
+                </div>
+              )}
+
+              {/* Album grid */}
+              {!albumsLoading && albums.length > 0 && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                    {albums.map(album => (
+                      <AlbumCard
+                        key={album.id}
+                        album={album}
+                        selected={selectedIds.has(album.id)}
+                        onToggle={() => toggleAlbum(album.id)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Import bar */}
+                  <div className="flex items-center justify-between p-4 glass rounded-2xl">
+                    <p className="text-purple-300 text-sm">
+                      {selectedIds.size === 0
+                        ? 'Tap albums to select'
+                        : `${selectedIds.size} album${selectedIds.size > 1 ? 's' : ''} selected`}
+                    </p>
+                    <Button
+                      variant={importDone ? 'secondary' : 'primary'}
+                      size="md"
+                      disabled={selectedIds.size === 0 || importing}
+                      loading={importing}
+                      icon={importDone ? CheckCircle2 : Check}
+                      onClick={handleImport}
+                    >
+                      {importing ? 'Importing…' : importDone ? 'Imported ✓' : 'Import Selected'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Section 4: Photo Tagging ─────────────────────────────────────────── */}
+        {/* ── Manual Upload ────────────────────────────────────────────────── */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <CloudUpload size={17} className="text-purple-400" />
+            <h2 className="text-purple-100 font-semibold text-sm">Upload Directly</h2>
+            <span className="text-purple-600 text-xs">— no sign-in needed</span>
+          </div>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById('file-input-connect').click()}
+            className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 ${
+              dragActive
+                ? 'border-pink-400 bg-pink-900/10'
+                : 'border-purple-800/50 hover:border-purple-600/50 hover:bg-purple-900/5'
+            }`}
+          >
+            <input
+              id="file-input-connect"
+              type="file"
+              multiple
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={handleFileInput}
+            />
+            <CloudUpload size={32} className={`mx-auto mb-3 transition-colors ${dragActive ? 'text-pink-400' : 'text-purple-600'}`} />
+            <p className="text-purple-300 text-sm font-medium mb-1">
+              {dragActive ? 'Drop to add' : 'Drop photos & videos here'}
+            </p>
+            <p className="text-purple-500 text-xs">or click to select files from your device</p>
+            {uploadedCount > 0 && (
+              <motion.p
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                className="mt-3 text-green-400 text-xs font-semibold"
+              >
+                ✓ {uploadedCount} file{uploadedCount > 1 ? 's' : ''} added
+              </motion.p>
+            )}
+          </div>
+        </div>
+
+        {/* ── Continue CTA ─────────────────────────────────────────────────── */}
         <AnimatePresence>
-          {isImported && (
-            <motion.div
-              key="tagging"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="space-y-5"
-            >
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <h2 className="font-display text-2xl font-semibold gradient-text">Tag Your Photos</h2>
-                  <p className="text-purple-400 text-xs mt-0.5">Help us find the best moments</p>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={Sparkles}
-                  loading={isAutoTagging}
-                  onClick={handleAutoTag}
-                >
-                  {isAutoTagging ? 'Analysing…' : 'Auto-suggest Tags'}
-                </Button>
-              </div>
-
-              {/* Photo grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {Array.from({ length: 12 }, (_, i) => {
-                  const grad = PHOTO_GRADIENTS[i % PHOTO_GRADIENTS.length];
-                  const tags = photoTags[`photo-${i}`] ?? new Set();
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, scale: 0.92 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="glass rounded-xl overflow-hidden"
-                    >
-                      <div className={`h-24 bg-gradient-to-br ${grad}`} />
-                      <div className="p-2 flex flex-wrap gap-1">
-                        {ALL_TAGS.map((tag) => (
-                          <TagChip
-                            key={tag}
-                            tag={tag}
-                            active={tags.has(tag)}
-                            onClick={() => toggleTag(`photo-${i}`, tag)}
-                          />
-                        ))}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {/* FACE GROUP ASSIST: integrate people grouping if available here */}
-              <p className="text-purple-600 text-[11px] text-center italic">
-                Face grouping integration point — placeholder for people-based clustering
-              </p>
-
-              <div className="flex justify-center pt-2">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  icon={ChevronRight}
-                  iconPosition="right"
-                  onClick={() => navigate('/memories')}
-                >
-                  Continue to Memories
-                </Button>
-              </div>
+          {(importDone || uploadedCount > 0) && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                icon={ChevronRight}
+                iconPosition="right"
+                onClick={() => navigate('/memories')}
+              >
+                Continue to Memories
+              </Button>
             </motion.div>
           )}
         </AnimatePresence>
