@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator</title></head>
+<body>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<script>
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width;
+  const r = s * 0.15;
+
+  // Background gradient
+  const bg = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  bg.addColorStop(0, '#2d1b4e');
+  bg.addColorStop(1, '#0d0618');
+
+  ctx.beginPath();
+  ctx.roundRect(0, 0, s, s, r);
+  ctx.fillStyle = bg;
+  ctx.fill();
+
+  // Heart
+  const cx = s / 2;
+  const cy = s / 2 - s * 0.03;
+  const hs = s * 0.28;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  ctx.moveTo(0, hs * 0.35);
+  ctx.bezierCurveTo(-hs, -hs * 0.2, -hs * 1.2, -hs * 0.8, 0, -hs * 0.35);
+  ctx.bezierCurveTo(hs * 1.2, -hs * 0.8, hs, -hs * 0.2, 0, hs * 0.35);
+
+  const heartGrad = ctx.createLinearGradient(-hs, -hs, hs, hs);
+  heartGrad.addColorStop(0, '#f472b6');
+  heartGrad.addColorStop(0.5, '#e879f9');
+  heartGrad.addColorStop(1, '#c084fc');
+  ctx.fillStyle = heartGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // Stars
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const dist = s * 0.32;
+    const sx = cx + Math.cos(angle) * dist;
+    const sy = cy + Math.sin(angle) * dist;
+    const sr = s * 0.02;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + (i % 3) * 0.2})`;
+    ctx.fill();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
+drawIcon(document.getElementById('c192'));
+drawIcon(document.getElementById('c512'));
+</script>
+</body>
+</html>

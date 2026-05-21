@@ -1,0 +1,40 @@
+{
+  "name": "Anniversary Surprise Studio",
+  "short_name": "Anniversary",
+  "description": "Turn your memories into a surprise they'll never forget.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#1a0a2e",
+  "background_color": "#0d0618",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["lifestyle", "photography"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Create Surprise",
+      "url": "/create",
+      "description": "Start a new anniversary surprise"
+    },
+    {
+      "name": "My Memories",
+      "url": "/memories",
+      "description": "View your curated memories"
+    }
+  ]
+}
