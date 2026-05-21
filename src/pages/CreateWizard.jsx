@@ -672,14 +672,11 @@ const STEP_META = [
 
 export default function CreateWizard() {
   const navigate = useNavigate();
-  const { userProfile, setUserProfile, currentStep, setCurrentStep, setHasCompletedSetup } =
-    useStore((s) => ({
-      userProfile: s.userProfile,
-      setUserProfile: s.setUserProfile,
-      currentStep: s.currentStep,
-      setCurrentStep: s.setCurrentStep,
-      setHasCompletedSetup: s.setHasCompletedSetup,
-    }));
+  const userProfile = useStore((s) => s.userProfile);
+  const setUserProfile = useStore((s) => s.setUserProfile);
+  const currentStep = useStore((s) => s.currentStep);
+  const setCurrentStep = useStore((s) => s.setCurrentStep);
+  const setHasCompletedSetup = useStore((s) => s.setHasCompletedSetup);
 
   // Local direction state for slide animation
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward

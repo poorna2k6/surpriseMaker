@@ -10,10 +10,8 @@ import useStore from '../store/useStore';
  *     triggerInstall, showIOSInstructions, setShowIOSInstructions }
  */
 function usePWAInstall() {
-  const { pwaInstall, setPwaInstall } = useStore((s) => ({
-    pwaInstall: s.pwaInstall,
-    setPwaInstall: s.setPwaInstall,
-  }));
+  const pwaInstall = useStore((s) => s.pwaInstall);
+  const setPwaInstall = useStore((s) => s.setPwaInstall);
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showIOSInstructions, setShowIOSInstructionsLocal] = useState(false);
