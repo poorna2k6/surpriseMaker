@@ -2,28 +2,11 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  Heart,
-  Star,
-  X,
-  LayoutGrid,
-  AlignLeft,
-  SlidersHorizontal,
-  RefreshCw,
-  Scissors,
-  Check,
-  Tag,
-  Trash2,
-  ChevronRight,
-  ImageOff,
-  Layers,
+  Heart, Star, X, LayoutGrid, AlignLeft, SlidersHorizontal,
+  Check, Tag, Trash2, ChevronRight, Images, Upload, Play,
 } from 'lucide-react';
 import useStore from '../store/useStore';
 import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const TAG_OPTIONS = ['couple', 'me', 'spouse', 'family', 'anniversary', 'trip', 'favorite', 'candid', 'milestone'];
 
 const GRADIENTS = [
   'from-pink-800 via-rose-900 to-purple-950',
@@ -34,108 +17,87 @@ const GRADIENTS = [
   'from-fuchsia-800 via-pink-900 to-rose-950',
   'from-emerald-800 via-teal-900 to-cyan-950',
   'from-red-800 via-rose-900 to-pink-950',
-  'from-indigo-800 via-violet-900 to-purple-950',
-  'from-yellow-800 via-amber-900 to-orange-950',
 ];
 
-const ALBUMS = ['Our Wedding', 'Honeymoon Bali', 'Anniversary Trip', 'Random Moments', 'Couple Selfies', 'Family'];
-const FILTERS = ['All', 'Favorites', 'Must Include', 'Couple', 'Trips', 'Anniversaries', 'Videos'];
+const FILTERS = ['All', 'Favorites', 'Must Include', 'Photos', 'Videos'];
 
-function makeMemory(i) {
-  const year = 2019 + Math.floor(i / 3);
-  const month = (i * 3) % 12;
-  const day = (i * 7 % 27) + 1;
-  const tagCount = 1 + (i % 3);
-  const tags = TAG_OPTIONS.slice(i % TAG_OPTIONS.length, i % TAG_OPTIONS.length + tagCount);
-  const statuses = ['optional', 'favorite', 'mustInclude', 'optional', 'optional', 'favorite'];
-  return {
-    id: `mem-${i}`,
-    date: new Date(year, month, day),
-    album: ALBUMS[i % ALBUMS.length],
-    gradient: GRADIENTS[i % GRADIENTS.length],
-    height: [140, 180, 160, 200, 150, 170][i % 6],
-    tags,
-    status: statuses[i % statuses.length],
-    note: i % 5 === 0 ? 'One of my favourite moments' : '',
-    isVideo: i % 7 === 0,
-  };
+function gradientFor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffffffff;
+  return GRADIENTS[Math.abs(h) % GRADIENTS.length];
 }
 
-const MOCK_MEMORIES = Array.from({ length: 24 }, (_, i) => makeMemory(i));
-
-const QUICK_PICKS = {
-  bestAnniversary: [0, 4, 8, 12],
-  suggestedFavorites: [1, 5, 9],
-  hiddenGems: [2, 6, 10, 14],
-};
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function FilterPill({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 cursor-pointer ${
-        active
-          ? 'bg-purple-500/30 text-purple-100 border-purple-400/60'
-          : 'bg-transparent text-purple-400 border-purple-700/40 hover:border-purple-500/50 hover:text-purple-300'
-      }`}
-    >
-      {label}
-    </button>
-  );
+function heightFor(id) {
+  const sizes = [140, 160, 180, 150, 170, 200];
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 17 + id.charCodeAt(i)) & 0xffffffff;
+  return sizes[Math.abs(h) % sizes.length];
 }
 
-function StatusBadge({ status }) {
-  if (status === 'favorite')
-    return (
-      <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-pink-500/80 flex items-center justify-center backdrop-blur-sm">
-        <Heart size={11} className="text-white fill-white" />
-      </div>
-    );
-  if (status === 'mustInclude')
-    return (
-      <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center backdrop-blur-sm">
-        <Star size={11} className="text-white fill-white" />
-      </div>
-    );
-  return null;
-}
-
-function MemoryCard({ memory, isSelected, onSelect, onAction }) {
+// ─── MemoryCard ───────────────────────────────────────────────────────────────
+function MemoryCard({ item, tagged, isSelected, onSelect, onStatusChange }) {
   const [hovered, setHovered] = useState(false);
-  const dateStr = memory.date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  const [imgError, setImgError] = useState(false);
+
+  const status = tagged?.status || item.status || 'optional';
+  const tags = tagged?.tags?.length ? tagged.tags : item.tags;
+  const isVideo = item.type === 'video';
+  const thumb = !imgError && (item.thumbnailUrl || item.url);
+  const gradient = gradientFor(item.id);
+  const height = heightFor(item.id);
+
+  const dateStr = item.dateTaken
+    ? new Date(item.dateTaken).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : item.sourceLabel || 'Uploaded';
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.94 }}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       layout
-      className={`relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 border-2 ${
+      className={`relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-all duration-200 ${
         isSelected ? 'border-pink-400' : 'border-transparent'
       }`}
-      style={{ height: memory.height }}
+      style={{ height }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onSelect(memory.id)}
+      onClick={() => onSelect(item.id)}
     >
-      {/* Image placeholder */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${memory.gradient}`} />
+      {/* Thumbnail / gradient background */}
+      {thumb ? (
+        <img
+          src={thumb}
+          alt={item.filename || 'Memory'}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
+      )}
 
-      {/* Video indicator */}
-      {memory.isVideo && (
-        <div className="absolute top-2 right-2 bg-black/50 rounded-full px-2 py-0.5 text-[10px] text-white font-medium backdrop-blur-sm">
-          VIDEO
+      {/* Video badge */}
+      {isVideo && (
+        <div className="absolute top-2 right-2 bg-black/60 rounded-full p-1 backdrop-blur-sm">
+          <Play size={10} className="text-white fill-white" />
         </div>
       )}
 
       {/* Status badge */}
-      <StatusBadge status={memory.status} />
+      {status === 'favorite' && (
+        <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-pink-500/90 flex items-center justify-center">
+          <Heart size={11} className="text-white fill-white" />
+        </div>
+      )}
+      {status === 'mustInclude' && (
+        <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-amber-500/90 flex items-center justify-center">
+          <Star size={11} className="text-white fill-white" />
+        </div>
+      )}
 
-      {/* Selection check */}
+      {/* Selected check */}
       {isSelected && (
-        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center shadow-md">
-          <Check size={13} className="text-white" />
+        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center shadow">
+          <Check size={12} className="text-white" />
         </div>
       )}
 
@@ -143,429 +105,307 @@ function MemoryCard({ memory, isSelected, onSelect, onAction }) {
       <AnimatePresence>
         {hovered && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="absolute inset-0 bg-black/50 flex items-center justify-center gap-2"
           >
             <button
-              onClick={(e) => { e.stopPropagation(); onAction(memory.id, 'favorite'); }}
-              className="w-8 h-8 rounded-full glass flex items-center justify-center hover:bg-pink-500/40 transition-colors"
-              title="Favorite"
+              onClick={e => { e.stopPropagation(); onStatusChange(item.id, status === 'favorite' ? 'optional' : 'favorite'); }}
+              className={`w-9 h-9 rounded-full glass flex items-center justify-center transition-colors ${status === 'favorite' ? 'bg-pink-500/60' : 'hover:bg-pink-500/40'}`}
             >
-              <Heart size={14} className="text-pink-300" />
+              <Heart size={15} className="text-pink-300" />
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onAction(memory.id, 'mustInclude'); }}
-              className="w-8 h-8 rounded-full glass flex items-center justify-center hover:bg-amber-500/40 transition-colors"
-              title="Must Include"
+              onClick={e => { e.stopPropagation(); onStatusChange(item.id, status === 'mustInclude' ? 'optional' : 'mustInclude'); }}
+              className={`w-9 h-9 rounded-full glass flex items-center justify-center transition-colors ${status === 'mustInclude' ? 'bg-amber-500/60' : 'hover:bg-amber-500/40'}`}
             >
-              <Star size={14} className="text-amber-300" />
+              <Star size={15} className="text-amber-300" />
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onAction(memory.id, 'removed'); }}
-              className="w-8 h-8 rounded-full glass flex items-center justify-center hover:bg-red-500/40 transition-colors"
-              title="Remove"
+              onClick={e => { e.stopPropagation(); onStatusChange(item.id, 'removed'); }}
+              className="w-9 h-9 rounded-full glass flex items-center justify-center hover:bg-red-500/40 transition-colors"
             >
-              <X size={14} className="text-red-300" />
+              <X size={15} className="text-red-300" />
             </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Bottom info bar */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-2.5 pt-6">
-        <div className="flex items-end justify-between gap-1">
+      {/* Bottom bar */}
+      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2 pt-5">
+        <div className="flex items-end justify-between">
           <div className="flex flex-wrap gap-1">
-            {memory.tags.slice(0, 2).map((t) => (
-              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 backdrop-blur-sm">
+            {tags.slice(0, 2).map(t => (
+              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/15 text-white/80">
                 {t}
               </span>
             ))}
           </div>
           <span className="text-[10px] text-white/60 flex-shrink-0">{dateStr}</span>
         </div>
-        {memory.note && (
-          <p className="text-[10px] text-white/70 mt-0.5 line-clamp-1 italic">{memory.note}</p>
+        {item.sourceLabel && (
+          <p className="text-[9px] text-white/40 mt-0.5">{item.sourceLabel}</p>
         )}
-        <p className="text-[9px] text-white/40 mt-0.5">{memory.album}</p>
       </div>
     </motion.div>
   );
 }
 
-function TimelineCard({ memory }) {
-  const dateStr = memory.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// ─── Empty State ──────────────────────────────────────────────────────────────
+function EmptyState({ navigate }) {
   return (
-    <div className="flex-shrink-0 w-36 rounded-xl overflow-hidden glass">
-      <div className={`h-24 bg-gradient-to-br ${memory.gradient}`} />
-      <div className="p-2">
-        <p className="text-purple-300 text-[10px]">{dateStr}</p>
-        <div className="flex flex-wrap gap-0.5 mt-1">
-          {memory.tags.slice(0, 1).map((t) => (
-            <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
-              {t}
-            </span>
-          ))}
-        </div>
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center gap-6 py-20 text-center px-6"
+    >
+      <div className="w-24 h-24 rounded-full bg-purple-900/40 border border-purple-700/30 flex items-center justify-center">
+        <Images size={40} className="text-purple-600" />
       </div>
-    </div>
-  );
-}
-
-function QuickPickSection({ title, ids, onHighlight }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-purple-400 text-xs font-semibold uppercase tracking-wide">{title}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {ids.map((i) => (
-          <button
-            key={i}
-            onClick={() => onHighlight(`mem-${i}`)}
-            className={`w-10 h-10 rounded-xl bg-gradient-to-br ${MOCK_MEMORIES[i]?.gradient ?? ''} hover:ring-2 hover:ring-pink-400/60 transition-all`}
-          />
-        ))}
+      <div>
+        <h3 className="font-display text-2xl font-semibold gradient-text mb-2">No memories yet</h3>
+        <p className="text-purple-400 text-sm max-w-xs mx-auto leading-relaxed">
+          Import photos from Google Photos or upload directly from your device to start building your anniversary story.
+        </p>
       </div>
-    </div>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button variant="primary" icon={Images} onClick={() => navigate('/connect')}>
+          Connect Photos
+        </Button>
+        <Button variant="secondary" icon={Upload} onClick={() => navigate('/connect')}>
+          Upload Directly
+        </Button>
+      </div>
+    </motion.div>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function Memories() {
   const navigate = useNavigate();
+
+  // Read real data from store
+  const mediaItems = useStore(s => s.mediaItems);
+  const taggedMedia = useStore(s => s.taggedMedia);
   const updateMediaItemStatus = useStore(s => s.updateMediaItemStatus);
+  const tagMediaItem = useStore(s => s.tagMediaItem);
+  const removeMediaItem = useStore(s => s.removeMediaItem);
 
-  const [view, setView]                 = useState('grid');   // 'grid' | 'timeline'
+  const [view, setView] = useState('grid');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [memories, setMemories]         = useState(MOCK_MEMORIES);
-  const [selectedIds, setSelectedIds]   = useState(new Set());
-  const [quickPanelOpen, setQuickPanelOpen] = useState(false);
-  const [highlightedId, setHighlightedId]   = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [quickOpen, setQuickOpen] = useState(false);
 
-  // ── Filter ──────────────────────────────────────────────────────────────────
+  // Merge store tagged state on top of raw items (removed items hidden)
+  const visibleItems = useMemo(() =>
+    mediaItems.filter(item => (taggedMedia[item.id]?.status || item.status) !== 'removed'),
+    [mediaItems, taggedMedia]
+  );
+
   const filtered = useMemo(() => {
-    if (activeFilter === 'All') return memories;
-    const map = {
-      'Favorites':    (m) => m.status === 'favorite',
-      'Must Include': (m) => m.status === 'mustInclude',
-      'Couple':       (m) => m.tags.includes('couple'),
-      'Trips':        (m) => m.tags.includes('trip'),
-      'Anniversaries':(m) => m.tags.includes('anniversary'),
-      'Videos':       (m) => m.isVideo,
-    };
-    return memories.filter(map[activeFilter] ?? (() => true));
-  }, [memories, activeFilter]);
-
-  // ── Select ──────────────────────────────────────────────────────────────────
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+    if (activeFilter === 'All') return visibleItems;
+    return visibleItems.filter(item => {
+      const status = taggedMedia[item.id]?.status || item.status;
+      if (activeFilter === 'Favorites') return status === 'favorite';
+      if (activeFilter === 'Must Include') return status === 'mustInclude';
+      if (activeFilter === 'Photos') return item.type !== 'video';
+      if (activeFilter === 'Videos') return item.type === 'video';
+      return true;
     });
-  };
+  }, [visibleItems, taggedMedia, activeFilter]);
 
-  const selectAll = () => {
-    setSelectedIds(new Set(filtered.map((m) => m.id)));
-  };
-  const clearSelection = () => setSelectedIds(new Set());
-
-  // ── Action (hover buttons) ──────────────────────────────────────────────────
-  const handleAction = (id, status) => {
-    setMemories((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, status } : m))
-    );
-    updateMediaItemStatus(id, status);
-  };
-
-  // ── Batch actions ───────────────────────────────────────────────────────────
-  const batchTag = (status) => {
-    setMemories((prev) =>
-      prev.map((m) => (selectedIds.has(m.id) ? { ...m, status } : m))
-    );
-    clearSelection();
-  };
-
-  const batchRemove = () => {
-    setMemories((prev) => prev.filter((m) => !selectedIds.has(m.id)));
-    clearSelection();
-  };
-
-  // ── Timeline grouping ───────────────────────────────────────────────────────
+  // Group by year for timeline view
   const byYear = useMemo(() => {
     const map = {};
-    filtered.forEach((m) => {
-      const y = m.date.getFullYear();
+    filtered.forEach(item => {
+      const y = item.dateTaken ? new Date(item.dateTaken).getFullYear() : 'Unknown';
       if (!map[y]) map[y] = [];
-      map[y].push(m);
+      map[y].push(item);
     });
-    return Object.entries(map).sort(([a], [b]) => Number(a) - Number(b));
+    return Object.entries(map).sort(([a], [b]) => {
+      if (a === 'Unknown') return 1;
+      if (b === 'Unknown') return -1;
+      return Number(b) - Number(a);
+    });
   }, [filtered]);
 
-  const anniversaryYears = new Set([2020, 2021, 2022, 2023, 2024]);
+  const toggleSelect = id => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const handleStatusChange = (id, status) => {
+    if (status === 'removed') {
+      removeMediaItem(id);
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    } else {
+      updateMediaItemStatus(id, status);
+    }
+  };
+
+  const batchStatus = status => {
+    selectedIds.forEach(id => {
+      if (status === 'removed') removeMediaItem(id);
+      else updateMediaItemStatus(id, status);
+    });
+    setSelectedIds(new Set());
+  };
+
+  const hasPhotos = visibleItems.length > 0;
+
   return (
     <div className="min-h-screen bg-[#0d0618] pb-28">
-      {/* ── Header ────────────────────────────────────────────────────────────── */}
+
+      {/* Header */}
       <div className="sticky top-0 z-20 bg-[#0d0618]/90 backdrop-blur-xl border-b border-purple-900/40 px-4 py-3">
         <div className="max-w-5xl mx-auto space-y-3">
-          {/* Title row */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="font-display text-2xl font-semibold gradient-text">Your Memories</h1>
-              <span className="text-xs bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full border border-purple-500/30 font-medium">
-                {memories.length}
-              </span>
+              {hasPhotos && (
+                <span className="text-xs bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  {visibleItems.length}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              {/* View toggle */}
-              <div className="flex glass rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setView('grid')}
-                  className={`p-2 transition-colors ${view === 'grid' ? 'bg-purple-500/30 text-purple-200' : 'text-purple-500 hover:text-purple-300'}`}
-                  title="Grid view"
-                >
-                  <LayoutGrid size={16} />
-                </button>
-                <button
-                  onClick={() => setView('timeline')}
-                  className={`p-2 transition-colors ${view === 'timeline' ? 'bg-purple-500/30 text-purple-200' : 'text-purple-500 hover:text-purple-300'}`}
-                  title="Timeline view"
-                >
-                  <AlignLeft size={16} />
-                </button>
-              </div>
-              {/* Quick picks panel toggle */}
-              <button
-                onClick={() => setQuickPanelOpen((v) => !v)}
-                className={`p-2 rounded-xl transition-all ${quickPanelOpen ? 'bg-purple-500/30 text-purple-200' : 'glass text-purple-500 hover:text-purple-300'}`}
-                title="Quick Picks"
-              >
-                <SlidersHorizontal size={16} />
+              {hasPhotos && (
+                <div className="flex glass rounded-xl overflow-hidden">
+                  <button onClick={() => setView('grid')}
+                    className={`p-2 transition-colors ${view === 'grid' ? 'bg-purple-500/30 text-purple-200' : 'text-purple-500 hover:text-purple-300'}`}>
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button onClick={() => setView('timeline')}
+                    className={`p-2 transition-colors ${view === 'timeline' ? 'bg-purple-500/30 text-purple-200' : 'text-purple-500 hover:text-purple-300'}`}>
+                    <AlignLeft size={16} />
+                  </button>
+                </div>
+              )}
+              <button onClick={() => navigate('/connect')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass text-purple-300 hover:text-purple-100 text-xs transition-colors">
+                <Upload size={13} /> Add Photos
               </button>
             </div>
           </div>
 
-          {/* Filter bar */}
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {FILTERS.map((f) => (
-              <FilterPill
-                key={f}
-                label={f}
-                active={activeFilter === f}
-                onClick={() => setActiveFilter(f)}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-4 pt-5 flex gap-5">
-        {/* ── Main content ──────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0">
-
-          {/* ── Batch actions bar ─────────────────────────────────────────── */}
-          <AnimatePresence>
-            {selectedIds.size > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: -12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                className="glass rounded-2xl p-3 mb-4 flex flex-wrap items-center gap-2"
-              >
-                <span className="text-purple-300 text-sm font-medium">
-                  {selectedIds.size} selected
-                </span>
-                <div className="flex-1" />
-                <button
-                  onClick={selectedIds.size === filtered.length ? clearSelection : selectAll}
-                  className="text-xs text-purple-400 hover:text-purple-200 transition-colors underline underline-offset-2"
-                >
-                  {selectedIds.size === filtered.length ? 'Deselect All' : 'Select All'}
+          {hasPhotos && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {FILTERS.map(f => (
+                <button key={f} onClick={() => setActiveFilter(f)}
+                  className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    activeFilter === f
+                      ? 'bg-purple-500/30 text-purple-100 border-purple-400/60'
+                      : 'bg-transparent text-purple-400 border-purple-700/40 hover:border-purple-500/50'
+                  }`}>
+                  {f}
                 </button>
-                <Button size="sm" variant="ghost" icon={Tag} onClick={() => batchTag('favorite')}>
-                  Favorite
-                </Button>
-                <Button size="sm" variant="ghost" icon={Star} onClick={() => batchTag('mustInclude')}>
-                  Must Include
-                </Button>
-                <Button size="sm" variant="danger" icon={Trash2} onClick={batchRemove}>
-                  Remove
-                </Button>
-                <button onClick={clearSelection} className="p-1.5 rounded-lg hover:bg-white/10 text-purple-400 hover:text-purple-200 transition-colors">
-                  <X size={15} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* ── Empty state ───────────────────────────────────────────────── */}
-          {filtered.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center gap-5 py-24 text-center"
-            >
-              <div className="w-20 h-20 rounded-full bg-purple-900/40 flex items-center justify-center">
-                <ImageOff size={36} className="text-purple-600" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-display text-2xl font-semibold gradient-text">No memories yet</h3>
-                <p className="text-purple-400 text-sm">Connect your photos to start building your story</p>
-              </div>
-              <Button variant="primary" size="md" icon={ChevronRight} iconPosition="right" onClick={() => navigate('/connect-photos')}>
-                Connect Photos
-              </Button>
-            </motion.div>
-          )}
-
-          {/* ── Grid view ─────────────────────────────────────────────────── */}
-          {view === 'grid' && filtered.length > 0 && (
-            <div className="columns-2 sm:columns-3 gap-3 space-y-3">
-              {filtered.map((memory, idx) => (
-                <motion.div
-                  key={memory.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(idx * 0.03, 0.4) }}
-                  className="break-inside-avoid mb-3"
-                >
-                  <MemoryCard
-                    memory={memory}
-                    isSelected={selectedIds.has(memory.id)}
-                    onSelect={toggleSelect}
-                    onAction={handleAction}
-                  />
-                </motion.div>
               ))}
             </div>
           )}
+        </div>
+      </div>
 
-          {/* ── Timeline view ─────────────────────────────────────────────── */}
-          {view === 'timeline' && filtered.length > 0 && (
-            <div className="space-y-8">
-              {byYear.map(([year, items]) => (
+      <div className="max-w-5xl mx-auto px-4 pt-5">
+
+        {/* No photos imported yet */}
+        {!hasPhotos && <EmptyState navigate={navigate} />}
+
+        {hasPhotos && (
+          <>
+            {/* Batch action bar */}
+            <AnimatePresence>
+              {selectedIds.size > 0 && (
                 <motion.div
-                  key={year}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-3"
+                  initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                  className="glass rounded-2xl p-3 mb-4 flex flex-wrap items-center gap-2"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-purple-500 ring-4 ring-purple-500/20" />
-                    <h3 className="font-display text-xl font-semibold gradient-text">{year}</h3>
-                    {anniversaryYears.has(Number(year)) && (
-                      <span className="text-xs bg-pink-500/20 text-pink-300 border border-pink-500/30 px-2 py-0.5 rounded-full">
-                        Anniversary Year
-                      </span>
-                    )}
-                    <span className="text-purple-600 text-xs">{items.length} memories</span>
+                  <span className="text-purple-300 text-sm font-medium">{selectedIds.size} selected</span>
+                  <div className="flex-1" />
+                  <button onClick={() => setSelectedIds(new Set(filtered.map(i => i.id)))}
+                    className="text-xs text-purple-400 hover:text-purple-200 transition-colors">
+                    Select All
+                  </button>
+                  <Button size="sm" variant="ghost" icon={Heart} onClick={() => batchStatus('favorite')}>Favorite</Button>
+                  <Button size="sm" variant="ghost" icon={Star} onClick={() => batchStatus('mustInclude')}>Must Include</Button>
+                  <Button size="sm" variant="danger" icon={Trash2} onClick={() => batchStatus('removed')}>Remove</Button>
+                  <button onClick={() => setSelectedIds(new Set())} className="p-1.5 rounded-lg hover:bg-white/10 text-purple-400">
+                    <X size={15} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Filter empty */}
+            {filtered.length === 0 && (
+              <div className="text-center py-16 text-purple-500">
+                <p className="text-sm">No memories match this filter.</p>
+                <button onClick={() => setActiveFilter('All')} className="text-purple-400 text-sm underline mt-2">Show all</button>
+              </div>
+            )}
+
+            {/* Grid view */}
+            {view === 'grid' && filtered.length > 0 && (
+              <div className="columns-2 sm:columns-3 gap-3">
+                {filtered.map((item, idx) => (
+                  <div key={item.id} className="break-inside-avoid mb-3">
+                    <MemoryCard
+                      item={item}
+                      tagged={taggedMedia[item.id]}
+                      isSelected={selectedIds.has(item.id)}
+                      onSelect={toggleSelect}
+                      onStatusChange={handleStatusChange}
+                    />
                   </div>
-                  <div className="ml-6 pl-4 border-l border-purple-800/50">
-                    <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                      {items.map((m) => (
-                        <TimelineCard key={m.id} memory={m} />
-                      ))}
+                ))}
+              </div>
+            )}
+
+            {/* Timeline view */}
+            {view === 'timeline' && filtered.length > 0 && (
+              <div className="space-y-8">
+                {byYear.map(([year, items]) => (
+                  <div key={year}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-3 h-3 rounded-full bg-purple-500 ring-4 ring-purple-500/20 flex-shrink-0" />
+                      <h3 className="font-display text-xl font-semibold gradient-text">{year}</h3>
+                      <span className="text-purple-600 text-xs">{items.length} photos</span>
+                    </div>
+                    <div className="ml-6 pl-4 border-l border-purple-800/50">
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        {items.map(item => {
+                          const [imgErr, setImgErr] = useState(false);
+                          const thumb = !imgErr && (item.thumbnailUrl || item.url);
+                          return (
+                            <div key={item.id} className="flex-shrink-0 w-36 rounded-xl overflow-hidden glass">
+                              <div className={`h-24 relative bg-gradient-to-br ${gradientFor(item.id)}`}>
+                                {thumb && (
+                                  <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover"
+                                    onError={() => setImgErr(true)} />
+                                )}
+                              </div>
+                              <div className="p-2">
+                                <p className="text-purple-400 text-[10px] truncate">
+                                  {item.dateTaken ? new Date(item.dateTaken).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : item.filename}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-
-        </div>
-
-        {/* ── Quick Picks sidebar (desktop) ──────────────────────────────────── */}
-        <AnimatePresence>
-          {quickPanelOpen && (
-            <motion.aside
-              initial={{ opacity: 0, x: 24, width: 0 }}
-              animate={{ opacity: 1, x: 0, width: 240 }}
-              exit={{ opacity: 0, x: 24, width: 0 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-              className="hidden lg:block flex-shrink-0 overflow-hidden"
-            >
-              <div className="glass rounded-2xl p-4 space-y-5 sticky top-24">
-                <h3 className="text-purple-200 font-semibold text-sm">Quick Picks</h3>
-
-                <QuickPickSection
-                  title="Best Anniversary Picks"
-                  ids={QUICK_PICKS.bestAnniversary}
-                  onHighlight={setHighlightedId}
-                />
-                <QuickPickSection
-                  title="Suggested Favorites"
-                  ids={QUICK_PICKS.suggestedFavorites}
-                  onHighlight={setHighlightedId}
-                />
-                <QuickPickSection
-                  title="Hidden Gems"
-                  ids={QUICK_PICKS.hiddenGems}
-                  onHighlight={setHighlightedId}
-                />
-
-                <div className="space-y-2 pt-1">
-                  <Button variant="ghost" size="sm" icon={RefreshCw} fullWidth onClick={() => {}}>
-                    Refresh Suggestions
-                  </Button>
-                  <Button variant="secondary" size="sm" icon={Scissors} fullWidth onClick={() => {}}>
-                    Re-curate
-                  </Button>
-                </div>
+                ))}
               </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
-      </div>
+            )}
 
-      {/* ── Mobile Quick Picks bottom sheet ──────────────────────────────────── */}
-      <AnimatePresence>
-        {quickPanelOpen && (
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            className="lg:hidden fixed bottom-0 left-0 right-0 z-40 glass rounded-t-3xl p-5 space-y-4 border-t border-purple-700/40"
-          >
-            <div className="w-10 h-1 rounded-full bg-purple-600/50 mx-auto" />
-            <h3 className="text-purple-200 font-semibold text-sm">Quick Picks</h3>
-            <QuickPickSection
-              title="Best Anniversary Picks"
-              ids={QUICK_PICKS.bestAnniversary}
-              onHighlight={setHighlightedId}
-            />
-            <QuickPickSection
-              title="Suggested Favorites"
-              ids={QUICK_PICKS.suggestedFavorites}
-              onHighlight={setHighlightedId}
-            />
-            <div className="flex gap-2 pb-safe">
-              <Button variant="ghost" size="sm" icon={RefreshCw} fullWidth onClick={() => setQuickPanelOpen(false)}>
-                Refresh
-              </Button>
-              <Button variant="secondary" size="sm" icon={Scissors} fullWidth onClick={() => setQuickPanelOpen(false)}>
-                Re-curate
+            {/* Continue CTA */}
+            <div className="mt-10 flex justify-end">
+              <Button variant="primary" icon={ChevronRight} iconPosition="right" onClick={() => navigate('/timeline')}>
+                Build Timeline
               </Button>
             </div>
-          </motion.div>
+          </>
         )}
-      </AnimatePresence>
-
-      {/* ── Continue CTA ──────────────────────────────────────────────────────── */}
-      <div className="fixed bottom-20 right-4 z-30">
-        <Button
-          variant="primary"
-          size="md"
-          icon={ChevronRight}
-          iconPosition="right"
-          onClick={() => navigate('/timeline')}
-        >
-          Timeline
-        </Button>
       </div>
     </div>
   );
