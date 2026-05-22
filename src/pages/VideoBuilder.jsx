@@ -1,20 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
   Film,
   Plus,
   GripVertical,
   ChevronDown,
   ChevronUp,
-  Edit3,
   Copy,
   Trash2,
-  Play,
   Download,
   RefreshCw,
   Mic,
   Music,
-  Zap,
   Type,
   Image,
   Video,
@@ -24,8 +22,8 @@ import {
   Loader2,
   Sparkles,
   Volume2,
-  VolumeX,
   RotateCcw,
+  Camera,
 } from 'lucide-react';
 import clsx from 'clsx';
 import useStore from '../store/useStore';
@@ -100,85 +98,67 @@ const GENERATION_STEPS = [
   'Complete',
 ];
 
-const INITIAL_SCENES = [
-  {
-    id: 'scene-1',
-    number: 1,
-    type: 'title',
-    title: 'Opening Title',
-    description: 'Fade in, couple names, wedding date',
-    duration: 5,
-    transition: 'Fade',
-    caption: 'Two hearts, one beautiful story.',
-    expanded: false,
-  },
-  {
-    id: 'scene-2',
-    number: 2,
-    type: 'photos',
-    title: 'The Beginning',
-    description: 'Wedding day photos',
-    duration: 15,
-    transition: 'Dissolve',
-    caption: 'The day it all began.',
-    expanded: false,
-  },
-  {
-    id: 'scene-3',
-    number: 3,
-    type: 'photos',
-    title: 'First Year',
-    description: 'Candid moments 2019–2020',
-    duration: 20,
-    transition: 'Slide',
-    caption: 'Every first – first home, first trip, first ordinary Tuesday.',
-    expanded: false,
-  },
-  {
-    id: 'scene-4',
-    number: 4,
-    type: 'photos',
-    title: 'Anniversary Milestones',
-    description: 'Anniversary photo collage',
-    duration: 15,
-    transition: 'Zoom',
-    caption: 'Each year more beautiful than the last.',
-    expanded: false,
-  },
-  {
-    id: 'scene-5',
-    number: 5,
-    type: 'photos',
-    title: 'Our Adventures',
-    description: 'Trip photos',
-    duration: 20,
-    transition: 'Wipe',
-    caption: 'The world is better when we explore it together.',
-    expanded: false,
-  },
-  {
-    id: 'scene-6',
-    number: 6,
+function autoGenerateScenes(mediaItems) {
+  const active = mediaItems.filter((m) => m.status !== 'removed');
+  if (!active.length) return [];
+
+  const byYear = {};
+  active.forEach((item) => {
+    const year = item.dateTaken
+      ? new Date(item.dateTaken).getFullYear().toString()
+      : 'Undated';
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push(item);
+  });
+
+  const sorted = Object.keys(byYear).sort((a, b) =>
+    a === 'Undated' ? 1 : b === 'Undated' ? -1 : parseInt(a) - parseInt(b)
+  );
+
+  const TRANSITIONS = ['Dissolve', 'Slide', 'Zoom', 'Wipe', 'Fade'];
+  const scenes = [
+    {
+      id: 'scene-title',
+      number: 1,
+      type: 'title',
+      title: 'Our Story',
+      description: 'Opening title card',
+      duration: 5,
+      transition: 'Fade',
+      caption: 'A beautiful love story.',
+      photos: [],
+    },
+  ];
+
+  sorted.forEach((year, i) => {
+    const photos = byYear[year];
+    scenes.push({
+      id: `scene-${year}`,
+      number: scenes.length + 1,
+      type: 'photos',
+      title: year === 'Undated' ? 'Our Memories' : `Memories of ${year}`,
+      description: `${photos.length} photo${photos.length !== 1 ? 's' : ''}`,
+      duration: Math.min(60, Math.max(10, photos.length * 3)),
+      transition: TRANSITIONS[i % TRANSITIONS.length],
+      caption: '',
+      photos,
+    });
+  });
+
+  scenes.push({
+    id: 'scene-message',
+    number: scenes.length + 1,
     type: 'message',
     title: 'Love Letter',
     description: 'Text slide with animated message',
     duration: 8,
     transition: 'Fade',
     caption: 'From my heart to yours — always and forever.',
-    expanded: false,
-  },
-  {
-    id: 'scene-7',
-    number: 7,
-    type: 'photos',
-    title: 'Closing',
-    description: 'Recent photo + anniversary wishes',
-    duration: 10,
-    transition: 'Dissolve',
-    caption: "Here's to forever.",
-    expanded: false,
-  },
-];
+    photos: [],
+  });
+
+  return scenes;
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -215,9 +195,33 @@ function SceneThumbnail({ type }) {
   );
 }
 
+function ScenePhotoThumb({ photo, index }) {
+  const [err, setErr] = useState(false);
+  const grads = [
+    'from-pink-800 to-rose-900', 'from-violet-800 to-purple-900',
+    'from-sky-800 to-indigo-900', 'from-amber-800 to-orange-900',
+  ];
+  if (photo && (photo.thumbnailUrl || photo.url) && !err) {
+    return (
+      <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-purple-800/30 relative">
+        <img
+          src={photo.thumbnailUrl || photo.url}
+          alt={photo.filename || 'Photo'}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={() => setErr(true)}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className={`w-14 h-14 rounded-lg flex-shrink-0 border border-purple-800/30 bg-gradient-to-br ${grads[index % grads.length]}`} />
+  );
+}
+
 function SceneCard({ scene, index, onUpdate, onDuplicate, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = SCENE_TYPE_ICONS[scene.type] || Image;
+  const photos = scene.photos || [];
 
   return (
     <motion.div layout className="glass rounded-2xl overflow-hidden border border-purple-800/30">
@@ -291,13 +295,23 @@ function SceneCard({ scene, index, onUpdate, onDuplicate, onDelete }) {
           >
             <div className="px-4 pb-4 pt-1 border-t border-purple-800/20 space-y-3">
               {/* Photo previews */}
-              <div className="flex gap-2">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-14 h-14 rounded-lg skeleton flex-shrink-0 border border-purple-800/30"
-                  />
-                ))}
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {photos.length > 0 ? (
+                  <>
+                    {photos.slice(0, 4).map((photo, i) => (
+                      <ScenePhotoThumb key={photo.id} photo={photo} index={i} />
+                    ))}
+                    {photos.length > 4 && (
+                      <div className="w-14 h-14 rounded-lg flex-shrink-0 border border-purple-800/30 bg-purple-900/40 flex items-center justify-center text-purple-400 text-xs font-semibold">
+                        +{photos.length - 4}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 h-14 px-3 text-purple-600 text-xs">
+                    <Camera size={14} /> No photos in this scene
+                  </div>
+                )}
                 <button className="w-14 h-14 rounded-lg border border-dashed border-purple-700/50 flex items-center justify-center text-purple-500 hover:text-purple-300 hover:border-purple-500 transition-colors flex-shrink-0">
                   <Plus size={16} />
                 </button>
@@ -458,12 +472,29 @@ function SuccessState({ onTryAnother }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function VideoBuilder() {
-  const videoProject = useStore(s => s.videoProject);
-  const setVideoProject = useStore(s => s.setVideoProject);
-  const isGenerating = useStore(s => s.isGenerating);
-  const generationProgress = useStore(s => s.generationProgress);
-  const setIsGenerating = useStore(s => s.setIsGenerating);
-  const setGenerationProgress = useStore(s => s.setGenerationProgress);
+  const navigate = useNavigate();
+  const mediaItems = useStore((s) => s.mediaItems);
+  const videoProject = useStore((s) => s.videoProject);
+  const setVideoProject = useStore((s) => s.setVideoProject);
+  const isGenerating = useStore((s) => s.isGenerating);
+  const generationProgress = useStore((s) => s.generationProgress);
+  const setIsGenerating = useStore((s) => s.setIsGenerating);
+  const setGenerationProgress = useStore((s) => s.setGenerationProgress);
+
+  const hasMedia = mediaItems.filter((m) => m.status !== 'removed').length > 0;
+
+  // Initialize scenes from store or auto-generate from media
+  const [scenes, setScenes] = useState(() => {
+    if (videoProject.scenes && videoProject.scenes.length > 0) return videoProject.scenes;
+    return autoGenerateScenes(mediaItems);
+  });
+
+  // Re-generate when mediaItems change and no scenes exist
+  useEffect(() => {
+    if (scenes.length === 0 && mediaItems.length > 0) {
+      setScenes(autoGenerateScenes(mediaItems));
+    }
+  }, [mediaItems.length]);
 
   // Local state
   const [selectedStyle, setSelectedStyle] = useState('classic');
@@ -471,7 +502,6 @@ export default function VideoBuilder() {
   const [pacing, setPacing] = useState('balanced');
   const [aiNarration, setAiNarration] = useState(false);
   const [voiceNote, setVoiceNote] = useState(false);
-  const [scenes, setScenes] = useState(INITIAL_SCENES);
   const [narrationOpen, setNarrationOpen] = useState(false);
   const [narrationScript, setNarrationScript] = useState(
     'From the first moment our eyes met to the beautiful life we have built together — this is our story. Every photograph a memory, every memory a treasure. Five years of laughter, adventure, quiet evenings, and boundless love. Happy Anniversary, my love.'
@@ -490,6 +520,7 @@ export default function VideoBuilder() {
     setIsComplete(false);
     setGenerationProgress(0);
     setGenerationStep(0);
+    setVideoProject({ scenes, style: selectedStyle, musicMood: selectedMood, pacing });
 
     let progress = 0;
     generationRef.current = setInterval(() => {
@@ -707,27 +738,60 @@ export default function VideoBuilder() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="font-display text-lg text-purple-100">Video Scenes</h2>
-              <p className="text-xs text-purple-400">{scenes.length} scenes configured</p>
+              <p className="text-xs text-purple-400">
+                {scenes.length > 0
+                  ? `${scenes.length} scenes · ${Math.floor(totalDuration / 60)}m ${totalDuration % 60}s`
+                  : 'No scenes yet'}
+              </p>
             </div>
-            <Button icon={Plus} variant="secondary" size="sm" onClick={addScene}>
-              Add Scene
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasMedia && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={RefreshCw}
+                  onClick={() => setScenes(autoGenerateScenes(mediaItems))}
+                >
+                  Regenerate
+                </Button>
+              )}
+              <Button icon={Plus} variant="secondary" size="sm" onClick={addScene}>
+                Add Scene
+              </Button>
+            </div>
           </div>
 
           {/* AI generation buttons */}
           <div className="flex flex-wrap gap-2 mb-4">
             <Button variant="ghost" size="sm" icon={Sparkles}>
               Auto-generate Scene Titles
-              {/* AI MESSAGE GENERATION */}
             </Button>
             <Button variant="ghost" size="sm" icon={Mic}>
               Auto-generate Narration
-              {/* AI NARRATION GENERATION */}
-            </Button>
-            <Button variant="ghost" size="sm" icon={RefreshCw}>
-              Regenerate All
             </Button>
           </div>
+
+          {/* Empty state */}
+          {scenes.length === 0 && (
+            <div className="flex flex-col items-center gap-4 py-16 text-center rounded-2xl border border-dashed border-purple-800/40">
+              <Layers size={36} className="text-purple-700" />
+              <div>
+                <p className="text-purple-300 font-semibold mb-1">
+                  {hasMedia ? 'Click "Regenerate" to build scenes from your photos' : 'No photos uploaded yet'}
+                </p>
+                <p className="text-purple-500 text-sm">
+                  {hasMedia
+                    ? 'Or add scenes manually using the button above'
+                    : 'Connect or upload photos to auto-generate your video scenes'}
+                </p>
+              </div>
+              {!hasMedia && (
+                <Button variant="primary" size="md" onClick={() => navigate('/connect')}>
+                  Connect Photos
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Scene list */}
           <div className="space-y-2">
