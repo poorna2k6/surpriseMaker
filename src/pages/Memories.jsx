@@ -235,7 +235,7 @@ function QuickPickSection({ title, ids, onHighlight }) {
 
 export default function Memories() {
   const navigate = useNavigate();
-  const { updateMediaItemStatus } = useStore();
+  const updateMediaItemStatus = useStore(s => s.updateMediaItemStatus);
 
   const [view, setView]                 = useState('grid');   // 'grid' | 'timeline'
   const [activeFilter, setActiveFilter] = useState('All');

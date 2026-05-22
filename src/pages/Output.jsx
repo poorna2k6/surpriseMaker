@@ -341,7 +341,7 @@ function ShareAccordion() {
 
 export default function Output() {
   const navigate = useNavigate();
-  const { userProfile } = useStore();
+  const userProfile = useStore(s => s.userProfile);
 
   const [versionBStatus, setVersionBStatus] = useState('idle');
   const [versionCStatus, setVersionCStatus] = useState('idle');

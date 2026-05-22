@@ -419,7 +419,8 @@ function AlbumPreview({ pages, selectedCoverStyle }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AlbumBuilder() {
-  const { albumProject, setAlbumProject } = useStore();
+  const albumProject = useStore(s => s.albumProject);
+  const setAlbumProject = useStore(s => s.setAlbumProject);
 
   const [selectedCoverStyle, setSelectedCoverStyle] = useState('dark-cinematic');
   const [coverTitle, setCoverTitle] = useState('Our 5 Years');

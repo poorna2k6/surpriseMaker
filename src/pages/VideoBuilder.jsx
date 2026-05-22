@@ -458,7 +458,12 @@ function SuccessState({ onTryAnother }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function VideoBuilder() {
-  const { videoProject, setVideoProject, isGenerating, generationProgress, setIsGenerating, setGenerationProgress } = useStore();
+  const videoProject = useStore(s => s.videoProject);
+  const setVideoProject = useStore(s => s.setVideoProject);
+  const isGenerating = useStore(s => s.isGenerating);
+  const generationProgress = useStore(s => s.generationProgress);
+  const setIsGenerating = useStore(s => s.setIsGenerating);
+  const setGenerationProgress = useStore(s => s.setGenerationProgress);
 
   // Local state
   const [selectedStyle, setSelectedStyle] = useState('classic');

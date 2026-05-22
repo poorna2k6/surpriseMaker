@@ -314,8 +314,12 @@ function ChapterCard({ chapter, onUpdate, onDelete, onReorder }) {
 
 export default function Timeline() {
   const navigate = useNavigate();
-  const { timelineChapters, setTimelineChapters, addTimelineChapter, updateTimelineChapter, removeTimelineChapter, userProfile } =
-    useStore();
+  const timelineChapters = useStore(s => s.timelineChapters);
+  const setTimelineChapters = useStore(s => s.setTimelineChapters);
+  const addTimelineChapter = useStore(s => s.addTimelineChapter);
+  const updateTimelineChapter = useStore(s => s.updateTimelineChapter);
+  const removeTimelineChapter = useStore(s => s.removeTimelineChapter);
+  const userProfile = useStore(s => s.userProfile);
 
   const [chapters, setChapters]       = useState(INITIAL_CHAPTERS);
   const [mode, setMode]               = useState('Auto');

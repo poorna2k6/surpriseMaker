@@ -325,7 +325,8 @@ function CombinedViewTab() {
 
 export default function Preview() {
   const navigate = useNavigate();
-  const { videoProject, albumProject } = useStore();
+  const videoProject = useStore(s => s.videoProject);
+  const albumProject = useStore(s => s.albumProject);
   const [activeTab, setActiveTab] = useState('video');
 
   return (

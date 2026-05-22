@@ -248,7 +248,9 @@ function SavedMessageCard({ msg, onDelete, onInsert }) {
 
 export default function Messages() {
   const navigate = useNavigate();
-  const { savedMessages, saveMessage, removeMessage } = useStore();
+  const savedMessages = useStore(s => s.savedMessages);
+  const saveMessage = useStore(s => s.saveMessage);
+  const removeMessage = useStore(s => s.removeMessage);
 
   const [activeCategory, setActiveCategory] = useState('Romantic');
   const [outputLength, setOutputLength]     = useState('medium');
