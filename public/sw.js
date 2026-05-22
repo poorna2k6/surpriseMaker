@@ -1,5 +1,5 @@
 // SERVICE WORKER CACHE: cache app shell assets here
-const CACHE_NAME = 'anniversary-studio-v1';
+const CACHE_NAME = 'anniversary-studio-v4';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
