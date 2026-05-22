@@ -17,22 +17,44 @@ import Output        from './pages/Output';
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, info: null };
   }
   static getDerivedStateFromError(error) {
     return { error };
   }
+  componentDidCatch(error, info) {
+    this.setState({ info });
+    console.error('App crash:', error, info);
+  }
   render() {
     if (this.state.error) {
       return (
-        <div style={{ minHeight: '100dvh', background: '#0d0618', color: '#f3e8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
-          <div style={{ fontSize: '2rem' }}>💔</div>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#f472b6' }}>Something went wrong</h2>
-          <pre style={{ background: '#1a0a2e', padding: '1rem', borderRadius: '0.75rem', fontSize: '0.75rem', color: '#c084fc', maxWidth: '600px', overflow: 'auto', textAlign: 'left', whiteSpace: 'pre-wrap' }}>
-            {this.state.error.message}
+        <div style={{
+          minHeight: '100vh', background: '#0d0618', color: '#f3e8ff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: '1rem', padding: '2rem', textAlign: 'center',
+          fontFamily: 'system-ui'
+        }}>
+          <div style={{ fontSize: '2.5rem' }}>💔</div>
+          <h2 style={{ color: '#f472b6', margin: 0 }}>App Error</h2>
+          <pre style={{
+            background: '#1a0a2e', padding: '1rem', borderRadius: '0.75rem',
+            fontSize: '0.75rem', color: '#c084fc', maxWidth: '90vw',
+            overflow: 'auto', textAlign: 'left', whiteSpace: 'pre-wrap'
+          }}>
+            {this.state.error?.message}
+            {'\n\n'}
+            {this.state.error?.stack?.slice(0, 600)}
           </pre>
-          <button onClick={() => window.location.reload()} style={{ background: 'linear-gradient(135deg, #9333ea, #e879f9)', color: 'white', border: 'none', borderRadius: '9999px', padding: '0.75rem 1.5rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>
-            Reload App
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              background: 'linear-gradient(135deg,#9333ea,#e879f9)',
+              color: 'white', border: 'none', borderRadius: '9999px',
+              padding: '0.75rem 2rem', cursor: 'pointer', fontSize: '1rem', fontWeight: 600
+            }}
+          >
+            Reload
           </button>
         </div>
       );
@@ -47,10 +69,7 @@ function App() {
       <BrowserRouter>
         <div className="min-h-dvh bg-[#0d0618] text-purple-100">
           <Routes>
-            {/* Landing has its own full-screen layout */}
             <Route path="/" element={<Landing />} />
-
-            {/* All other routes share AppLayout (sidebar + mobile nav) */}
             <Route element={<AppLayout />}>
               <Route path="/create"   element={<CreateWizard />} />
               <Route path="/connect"  element={<ConnectPhotos />} />
